@@ -2,6 +2,12 @@
 
     <PropertyGroup>
         <TargetFramework>netcoreapp3.1</TargetFramework>
+        <Description>c# 的一些常用方法封装</Description>
+        <PackageProjectUrl>https://github.com/leo93/CSharp.Framework</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/leo93/CSharp.Framework</RepositoryUrl>
+        <PackageTags>framework</PackageTags>
+        <Authors>leo</Authors>
+        <PackageReleaseNotes>ExcelHelper</PackageReleaseNotes>
     </PropertyGroup>
 
     <ItemGroup>
