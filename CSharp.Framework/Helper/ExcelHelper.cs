@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Dynamic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using Newtonsoft.Json;
 using NPOI.HSSF.UserModel;
 using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
@@ -27,15 +29,32 @@ namespace CSharp.Framework.Helper
         {
             _dateTimeFormat = dateTimeFormat;
         }
+        // 根据已有excel模板写入 ， 冗余代码重构，多sheet导出
 
         #region read
 
+        /// <summary>
+        /// 根据excel路径读取 - 位置关联生成动态数据集合
+        /// </summary>
+        /// <param name="excelPath"></param>
+        /// <param name="dynamicFieldMapper"></param>
+        /// <param name="sheetIndex"></param>
+        /// <param name="containsHeader"></param>
+        /// <returns></returns>
         public static List<dynamic> Read(string excelPath, Dictionary<int, string> dynamicFieldMapper = null, int sheetIndex = 0, bool containsHeader = true)
         {
             var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read);
             return Read(stream, dynamicFieldMapper, sheetIndex, containsHeader);
         }
 
+        /// <summary>
+        /// 根据excel流读取 - 位置关联生成动态数据集合
+        /// </summary>
+        /// <param name="excelStream"></param>
+        /// <param name="dynamicFieldMapper"></param>
+        /// <param name="sheetIndex"></param>
+        /// <param name="containsHeader"></param>
+        /// <returns></returns>
         public static List<dynamic> Read(Stream excelStream, Dictionary<int, string> dynamicFieldMapper = null, int sheetIndex = 0, bool containsHeader = true)
         {
             var workbook = CreateWorkBook(excelStream);
@@ -50,19 +69,15 @@ namespace CSharp.Framework.Helper
                 var readRow = sheet.GetRow(i);
                 if (readRow != null)
                 {
-                    dynamic model = new ExpandoObject();
+                    var model = new ExpandoObject();
                     for (int j = 0; j < readRow.PhysicalNumberOfCells; j++)
                     {
                         //字典存在映射关系才进行赋值
                         if (dynamicFieldMapper.ContainsKey(j))
                         {
-                            string cellValue;
+                            string cellValue = null;
                             var cell = readRow.GetCell(j);
-                            if (cell == null)
-                            {
-                                //todo 
-                            }
-                            else
+                            if (cell != null)
                             {
                                 if (cell.CellType == CellType.Numeric)
                                 {
@@ -74,10 +89,10 @@ namespace CSharp.Framework.Helper
                                     cell.SetCellType(CellType.String);
                                     cellValue = cell.StringCellValue;
                                 }
-
-
-                                ((IDictionary<string, object>) model).Add(dynamicFieldMapper[j], cellValue);
                             }
+
+                            //SetFieldValue(model, dynamicFieldMapper[j], cellValue);
+                            ((IDictionary<string, object>) model).Add(dynamicFieldMapper[j], cellValue);
                         }
                     }
 
@@ -85,15 +100,32 @@ namespace CSharp.Framework.Helper
                 }
             }
 
+
+            result = JsonConvert.DeserializeObject<List<object>>(JsonConvert.SerializeObject(result));
             return result;
         }
 
+        /// <summary>
+        /// 根据excel路径读取 - 表头（标题）关联生成动态数据集合
+        /// </summary>
+        /// <param name="excelPath"></param>
+        /// <param name="dynamicFieldMapper"></param>
+        /// <param name="sheetIndex"></param>
+        /// <returns></returns>
         public static List<dynamic> Read(string excelPath, Dictionary<string, string> dynamicFieldMapper, int sheetIndex = 0)
         {
             var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read);
             return Read(stream, dynamicFieldMapper, sheetIndex);
         }
 
+        /// <summary>
+        /// 根据excel流读取 - 表头（标题）关联生成动态数据集合
+        /// </summary>
+        /// <param name="excelStream"></param>
+        /// <param name="dynamicFieldMapper"></param>
+        /// <param name="sheetIndex"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
         public static List<dynamic> Read(Stream excelStream, Dictionary<string, string> dynamicFieldMapper, int sheetIndex = 0)
         {
             if (!(dynamicFieldMapper?.Any() ?? false)) throw new Exception("表头对应关系不能为空！可以尝试不传该参数。");
@@ -119,7 +151,7 @@ namespace CSharp.Framework.Helper
                 var readRow = sheet.GetRow(i);
                 if (readRow != null)
                 {
-                    dynamic model = new ExpandoObject();
+                    var model = new ExpandoObject();
                     for (int j = 0; j < readRow.PhysicalNumberOfCells; j++)
                     {
                         //字典存在映射关系才进行赋值
@@ -128,13 +160,9 @@ namespace CSharp.Framework.Helper
                         var curHeaderName = headerMap[j];
                         if (string.IsNullOrEmpty(curHeaderName) || !dynamicFieldMapper.ContainsKey(curHeaderName)) continue;
                         var cell = readRow.GetCell(j);
-                        if (cell == null)
+                        string cellValue = null;
+                        if (cell != null)
                         {
-                            //todo 
-                        }
-                        else
-                        {
-                            string cellValue;
                             if (cell.CellType == CellType.Numeric)
                             {
                                 short format = cell.CellStyle.DataFormat;
@@ -145,25 +173,46 @@ namespace CSharp.Framework.Helper
                                 cell.SetCellType(CellType.String);
                                 cellValue = cell.StringCellValue;
                             }
-
-                            ((IDictionary<string, object>) model).Add(dynamicFieldMapper[curHeaderName], cellValue);
                         }
+
+                        //SetFieldValue(model, dynamicFieldMapper[curHeaderName], cellValue);
+                        ((IDictionary<string, object>) model).Add(dynamicFieldMapper[curHeaderName], cellValue);
                     }
 
                     result.Add(model);
                 }
             }
-
+            
+            result = JsonConvert.DeserializeObject<List<object>>(JsonConvert.SerializeObject(result));
+            
             return result;
         }
 
 
+        /// <summary>
+        /// 根据excel路径读取 - 返回泛型集合
+        /// </summary>
+        /// <param name="excelPath"></param>
+        /// <param name="fieldMapperList"></param>
+        /// <param name="sheetIndex"></param>
+        /// <param name="headerIndex"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
         public static List<T> Read<T>(string excelPath, Dictionary<int, string> fieldMapperList = null, int sheetIndex = 0, int headerIndex = 0) where T : class, new()
         {
             var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read);
             return Read<T>(stream, fieldMapperList, sheetIndex, headerIndex);
         }
 
+        /// <summary>
+        /// 根据excel流读取 - 返回泛型集合
+        /// </summary>
+        /// <param name="excelStream"></param>
+        /// <param name="fieldMapperList"></param>
+        /// <param name="sheetIndex"></param>
+        /// <param name="headerIndex"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
         public static List<T> Read<T>(Stream excelStream, Dictionary<int, string> fieldMapperList = null, int sheetIndex = 0, int headerIndex = 0) where T : class, new()
         {
             var workbook = CreateWorkBook(excelStream);
@@ -185,13 +234,9 @@ namespace CSharp.Framework.Helper
                         //字典存在映射关系才进行赋值
                         if (fieldMapperList.ContainsKey(j))
                         {
-                            string cellValue;
+                            string cellValue = null;
                             var cell = readRow.GetCell(j);
-                            if (cell == null)
-                            {
-                                //todo 
-                            }
-                            else
+                            if (cell != null)
                             {
                                 if (cell.CellType == CellType.Numeric)
                                 {
@@ -203,9 +248,9 @@ namespace CSharp.Framework.Helper
                                     cell.SetCellType(CellType.String);
                                     cellValue = cell.StringCellValue;
                                 }
-
-                                SetFieldValue(model, fieldMapperList[j], cellValue);
                             }
+
+                            SetFieldValue(model, fieldMapperList[j], cellValue);
                         }
                     }
 
@@ -254,16 +299,15 @@ namespace CSharp.Framework.Helper
         /// <summary>
         /// 根据实体集合生成excel 流
         /// </summary>
-        /// <param name="excelData">实体数据集合</param>
-        /// <param name="fieldMapperList">字段映射关系</param>
-        /// <param name="templatePath">根据已有excel模版导出传该参数，模版语法=FieldName(不支持多级)</param>
+        /// <param name="excelData"></param>
+        /// <param name="fieldMapperList"></param>
         /// <param name="sheetName"></param>
-        /// <param name="containsHeader">是否需要表头，默认true</param>
+        /// <param name="containsHeader"></param>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        public static MemoryStream Export<T>(List<T> excelData, Dictionary<string, string> fieldMapperList = null, string templatePath = null, string sheetName = "sheet1",
-            bool containsHeader = true)
+        public static Stream Export<T>(List<T> excelData, Dictionary<string, string> fieldMapperList = null, string sheetName = "sheet1",
+            bool containsHeader = true) where T : class, new()
         {
             if (!excelData?.Any() ?? true) throw new Exception("export empty!");
             //  with read at compare add exists excel file template mapper
@@ -272,47 +316,39 @@ namespace CSharp.Framework.Helper
 
             fieldMapperList = GetMapperList(excelData[0], fieldMapperList);
 
-            if (!string.IsNullOrEmpty(templatePath))
+            //sheet当前写入行位置
+            var rowNum = 0;
+            if (containsHeader)
             {
-                // todo
-                //from template get mapper
+                var headerRow = sheet.CreateRow(rowNum);
+
+                rowNum++;
+                //表头单元格位置
+                var headerCellNum = 0;
+                foreach (var fieldMapper in fieldMapperList)
+                {
+                    headerRow
+                        .CreateCell(headerCellNum)
+                        .SetCellValue(fieldMapper.Value);
+                    headerCellNum++;
+                }
             }
-            else
+
+            //写入内容
+            foreach (var rowData in excelData)
             {
-                //sheet当前写入行位置
-                var rowNum = 0;
-                if (containsHeader)
+                var row = sheet.CreateRow(rowNum);
+                var curCellNum = 0;
+                foreach (var fieldMapper in fieldMapperList)
                 {
-                    var headerRow = sheet.CreateRow(rowNum);
+                    row
+                        .CreateCell(curCellNum)
+                        .SetCellValue(GetFieldValue(rowData, fieldMapper.Key));
 
-                    rowNum++;
-                    //表头单元格位置
-                    var headerCellNum = 0;
-                    foreach (var fieldMapper in fieldMapperList)
-                    {
-                        headerRow
-                            .CreateCell(headerCellNum)
-                            .SetCellValue(fieldMapper.Value);
-                        headerCellNum++;
-                    }
+                    curCellNum++;
                 }
 
-                //写入内容
-                foreach (var rowData in excelData)
-                {
-                    var row = sheet.CreateRow(rowNum);
-                    var curCellNum = 0;
-                    foreach (var fieldMapper in fieldMapperList)
-                    {
-                        row
-                            .CreateCell(curCellNum)
-                            .SetCellValue(GetFieldValue(rowData, fieldMapper.Key));
-
-                        curCellNum++;
-                    }
-
-                    rowNum++;
-                }
+                rowNum++;
             }
 
             var fs = new FileStream($"{Guid.NewGuid().ToString()}.xlsx", FileMode.Create, FileAccess.Write);
@@ -323,6 +359,78 @@ namespace CSharp.Framework.Helper
 
 
             return stream;
+        }
+
+        /// <summary>
+        /// 根据已有excel模板导出
+        /// </summary>
+        /// <param name="excelData"></param>
+        /// <param name="templatePath">模板相对路径</param>
+        /// <param name="templateRelationRowIndex">模板语法所在行</param>
+        /// <param name="sheetIndex">读取的sheet</param>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        public static Stream Export<T>(List<T> excelData, [NotNull] string templatePath, int templateRelationRowIndex = 1, int sheetIndex = 0) where T : class, new()
+        {
+            var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", templatePath);
+            if (!File.Exists(path))
+                throw new Exception($"Excel模板文件不存在！");
+
+            IWorkbook workbook;
+
+            var buffer = File.ReadAllBytes(path);
+            var stream = new MemoryStream(buffer.ToArray());
+            var fileExtension = Path.GetExtension(path).ToLower();
+            if (fileExtension == ".xlsx")
+                workbook = new XSSFWorkbook(stream);
+            else if (fileExtension == ".xls")
+                workbook = new HSSFWorkbook(stream);
+            else throw new Exception("错误的模板文件格式！");
+
+            var sheet = workbook.GetSheetAt(sheetIndex);
+
+            var fieldMapperList = new Dictionary<int, string>();
+
+            var relationRow = sheet.GetRow(templateRelationRowIndex);
+            if (relationRow == null) throw new Exception("模板未生成字段关联，具体语法为'$FieldName'(PS：不需要单引号)。");
+
+            for (var i = 0; i < relationRow.PhysicalNumberOfCells; i++)
+            {
+                var relationCode = relationRow.GetCell(i)
+                    ?.StringCellValue;
+                if (string.IsNullOrEmpty(relationCode)) throw new Exception($"第{i + 1}行模板语法为空！");
+
+                var splitRelationCode = relationCode.Split('$', StringSplitOptions.RemoveEmptyEntries);
+                if (splitRelationCode.Length != 1) throw new Exception($"第{i + 1}行模板语法错误！");
+                var relation = splitRelationCode[0].Trim();
+                fieldMapperList.Add(i, relation);
+            }
+
+            var writeRowIndex = templateRelationRowIndex;
+            foreach (var rowData in excelData)
+            {
+                foreach (var fieldMapper in fieldMapperList)
+                {
+                    SetAndCreateCellValue(rowData, sheet, writeRowIndex, fieldMapper.Key, fieldMapper.Value);
+                }
+
+                writeRowIndex++;
+            }
+
+            var writefs = new FileStream($"{Guid.NewGuid().ToString()}.xlsx", FileMode.Create, FileAccess.Write);
+            workbook.Write(writefs);
+
+            writefs.Flush();
+            
+            return null;
+        }
+
+        private static void SetAndCreateCellValue<T>(T model, ISheet sheet, int rowIndex, int cellIndex, string fieldName)
+        {
+            var row = sheet.GetRow(rowIndex) ?? sheet.CreateRow(rowIndex);
+            (row.GetCell(cellIndex) ?? row.CreateCell(cellIndex))
+                .SetCellValue(GetFieldValue(model, fieldName));
         }
 
         #endregion

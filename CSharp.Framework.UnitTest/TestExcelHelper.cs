@@ -24,19 +24,31 @@ namespace CSharp.Framework.UnitTest
         public void TestExport()
         {
             var random = new Random();
+            //
+            // var list = new List<TestExcelExportModel>();
+            // for (int i = 0; i < 10000; i++)
+            // {
+            //     list.Add(new TestExcelExportModel
+            //     {
+            //         Id = Guid.NewGuid().ToString(),
+            //         CreateByAt = DateTime.Now.AddDays(i),
+            //         ExportEnum = (TestExcelExportEnum) random.Next(0, 2)
+            //     });
+            // }
 
-            var list = new List<TestExcelExportModel>();
+            var list = new List<object>();
             for (int i = 0; i < 10000; i++)
             {
-                list.Add(new TestExcelExportModel
+                list.Add(new
                 {
                     Id = Guid.NewGuid().ToString(),
                     CreateByAt = DateTime.Now.AddDays(i),
-                    ExportEnum = (TestExcelExportEnum) random.Next(0, 2)
+                    ExportEnum = (TestExcelExportEnum) random.Next(0, 3)
                 });
             }
 
-            ExcelHelper.Export(list);
+
+            ExcelHelper.Export(list, "template/2.xlsx");
         }
 
         [Fact]
@@ -61,12 +73,11 @@ namespace CSharp.Framework.UnitTest
                 {"饭否", "HasEat"},
             });
 
-            foreach (IDictionary<string, object> item in list)
+            foreach (var item in list)
             {
-                
-                Console.WriteLine(ExcelHelper.GetDynamicValue(item,"Name"));
-                Console.WriteLine(ExcelHelper.GetDynamicValue(item,"Date"));
-                Console.WriteLine(ExcelHelper.GetDynamicValue(item,"HasEat"));
+                Console.WriteLine(item.Date);
+                Console.WriteLine(item.Name);
+                Console.WriteLine(item.HasEat);
             }
         }
     }
