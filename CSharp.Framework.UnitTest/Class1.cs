@@ -11,8 +11,6 @@ namespace CSharp.Framework.UnitTest
 {
     public class Class1
     {
-        
-        
         [Fact]
         public void First()
         {
@@ -48,23 +46,24 @@ namespace CSharp.Framework.UnitTest
             }
         }
 
-        
 
         [Fact]
         public void TestDynamicObjectExtension()
         {
-
-            dynamic d = new DynamicObjectExtension();
+            dynamic d = new ExcelDynamicObject();
             d.AddProperty("item1", "item1");
             d.AddProperty("item2", "item2");
+
+            var success = d is ExcelDynamicObject;
+            dynamic a = new Object();
+            
+            success = a is ExcelDynamicObject;
             
             Console.WriteLine(d.item1);
             Console.WriteLine(d.item2);
         }
     }
-    
-    
-    
+
 
     public class User
     {

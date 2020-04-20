@@ -9,6 +9,7 @@ using System.Linq;
 using System.Reflection;
 using CSharp.Framework.Extensions;
 using Newtonsoft.Json;
+using NPOI.HSSF.Record;
 using NPOI.HSSF.UserModel;
 using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
@@ -24,7 +25,7 @@ namespace CSharp.Framework.Helper
         private static readonly Dictionary<string, string> FieldDescMap = new Dictionary<string, string>();
         private static readonly Dictionary<string, string> FieldDescRelationMapper = new Dictionary<string, string>();
         private static Dictionary<string, PropertyInfo> FieldPropertyInfoMap = new Dictionary<string, PropertyInfo>();
-        
+
         private static string _dateTimeFormat = "yyyy-MM-dd hh:mm:ss";
 
         public static void SetDateTimeFormat(string dateTimeFormat)
@@ -69,10 +70,10 @@ namespace CSharp.Framework.Helper
             for (var i = startIndex; i < sheet.PhysicalNumberOfRows; i++)
             {
                 var readRow = sheet.GetRow(i);
-                
+
                 if (readRow == null) continue;
-                
-                var model = new DynamicObjectExtension();
+
+                var model = new ExcelDynamicObject();
                 for (var j = 0; j < readRow.PhysicalNumberOfCells; j++)
                 {
                     //字典存在映射关系才进行赋值
@@ -134,7 +135,7 @@ namespace CSharp.Framework.Helper
                 var readRow = sheet.GetRow(i);
                 if (readRow != null)
                 {
-                    var model = new DynamicObjectExtension();
+                    var model = new ExcelDynamicObject();
                     for (var j = 0; j < readRow.PhysicalNumberOfCells; j++)
                     {
                         //字典存在映射关系才进行赋值
@@ -272,7 +273,6 @@ namespace CSharp.Framework.Helper
 
         //todo 多sheet 导出
 
-
         /// <summary>
         /// 根据实体集合生成excel 流
         /// </summary>
@@ -384,11 +384,13 @@ namespace CSharp.Framework.Helper
                 fieldMapperList.Add(i, relation);
             }
 
+
             var writeRowIndex = templateRelationRowIndex;
             foreach (var rowData in excelData)
             {
                 foreach (var fieldMapper in fieldMapperList)
                 {
+                    //todo is DynamicObjectExtension
                     SetAndCreateCellValue(rowData, sheet, writeRowIndex, fieldMapper.Key, fieldMapper.Value);
                 }
 
@@ -501,7 +503,6 @@ namespace CSharp.Framework.Helper
             return propertyInfos;
         }
 
-        
 
         private static PropertyInfo GetFieldPropertyInfo<T>(T model, string fieldName)
         {
@@ -563,6 +564,8 @@ namespace CSharp.Framework.Helper
                 default:
                     return fieldValue.ToString();
             }
+
+            // todo DynamicObjectExtension
         }
 
         /// <summary>
@@ -631,6 +634,7 @@ namespace CSharp.Framework.Helper
                 fieldMapperList.Add(fieldName, fieldName);
             }
 
+            //todo 4、from DynamicObjectExtension 
             return fieldMapperList;
         }
 

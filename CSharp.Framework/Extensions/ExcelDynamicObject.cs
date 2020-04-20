@@ -6,7 +6,7 @@ using System.Dynamic;
 namespace CSharp.Framework.Extensions
 {
     [DebuggerStepThrough]
-    public sealed class DynamicObjectExtension : DynamicObject
+    public sealed class ExcelDynamicObject : DynamicObject
     {
         private Dictionary<string, object> Map = new Dictionary<string, object>();
 

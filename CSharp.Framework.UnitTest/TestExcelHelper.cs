@@ -36,7 +36,7 @@ namespace CSharp.Framework.UnitTest
             //     });
             // }
 
-            var list = new List<object>();
+            var list = new List<dynamic>();
             for (int i = 0; i < 10000; i++)
             {
                 list.Add(new
