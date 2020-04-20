@@ -2,23 +2,24 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using System.Dynamic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using CSharp.Framework.Extensions;
-using Newtonsoft.Json;
-using NPOI.HSSF.Record;
 using NPOI.HSSF.UserModel;
 using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
 
 namespace CSharp.Framework.Helper
 {
+    /// <summary>
+    /// Excel帮助类 - 依赖NPOI
+    /// </summary>
     public class ExcelHelper
     {
         private static readonly int _defaultHeaderNum = 0;
+        private static readonly object _excelFileReadLocker = new object();
 
         private static readonly Dictionary<string, PropertyInfo[]> ModelMap = new Dictionary<string, PropertyInfo[]>();
         private static readonly Dictionary<string, string> ModelEnumMap = new Dictionary<string, string>();
@@ -32,7 +33,7 @@ namespace CSharp.Framework.Helper
         {
             _dateTimeFormat = dateTimeFormat;
         }
-        // 根据已有excel模板写入 ， 冗余代码重构，多sheet导出
+
 
         #region read
 
@@ -328,15 +329,12 @@ namespace CSharp.Framework.Helper
                 rowNum++;
             }
 
-            var fs = new FileStream($"{Guid.NewGuid().ToString()}.xlsx", FileMode.Create, FileAccess.Write);
-            workbook.Write(fs);
-
             var stream = new MemoryStream();
-            //workbook.Write(stream);
-
+            workbook.Write(stream, true);
 
             return stream;
         }
+
 
         /// <summary>
         /// 根据已有excel模板导出
@@ -350,20 +348,22 @@ namespace CSharp.Framework.Helper
         /// <exception cref="Exception"></exception>
         public static Stream Export<T>(List<T> excelData, [NotNull] string templatePath, int templateRelationRowIndex = 1, int sheetIndex = 0) where T : class, new()
         {
+            //读取模版关联
             var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", templatePath);
             if (!File.Exists(path))
                 throw new Exception($"Excel模板文件不存在！");
 
             IWorkbook workbook;
 
-            var buffer = File.ReadAllBytes(path);
+            var buffer = ReadFileBuffer(path); //File.ReadAllBytes(path);
             var stream = new MemoryStream(buffer.ToArray());
             var fileExtension = Path.GetExtension(path).ToLower();
-            if (fileExtension == ".xlsx")
-                workbook = new XSSFWorkbook(stream);
-            else if (fileExtension == ".xls")
-                workbook = new HSSFWorkbook(stream);
-            else throw new Exception("错误的模板文件格式！");
+            workbook = fileExtension switch
+            {
+                ".xlsx" => new XSSFWorkbook(stream),
+                ".xls" => new HSSFWorkbook(stream),
+                _ => new XSSFWorkbook(stream),
+            };
 
             var sheet = workbook.GetSheetAt(sheetIndex);
 
@@ -385,25 +385,30 @@ namespace CSharp.Framework.Helper
             }
 
 
+            //写入
             var writeRowIndex = templateRelationRowIndex;
             foreach (var rowData in excelData)
             {
-                foreach (var fieldMapper in fieldMapperList)
+                foreach (var (key, value) in fieldMapperList)
                 {
-                    //todo is DynamicObjectExtension
-                    SetAndCreateCellValue(rowData, sheet, writeRowIndex, fieldMapper.Key, fieldMapper.Value);
+                    SetAndCreateCellValue(rowData, sheet, writeRowIndex, key, value);
                 }
 
                 writeRowIndex++;
             }
 
-            var writefs = new FileStream($"{Guid.NewGuid().ToString()}.xlsx", FileMode.Create, FileAccess.Write);
-            workbook.Write(writefs);
-
-            writefs.Flush();
-
-            return null;
+            var result = new MemoryStream();
+            if (workbook is XSSFWorkbook xssfWorkbook)
+                xssfWorkbook.Write(result, true);
+            else
+                workbook.Write(result);
+            
+            return result;
         }
+
+        #endregion
+
+        #region Utils
 
         private static void SetAndCreateCellValue<T>(T model, ISheet sheet, int rowIndex, int cellIndex, string fieldName)
         {
@@ -412,9 +417,13 @@ namespace CSharp.Framework.Helper
                 .SetCellValue(GetFieldValue(model, fieldName));
         }
 
-        #endregion
-
-        #region Utils
+        private static byte[] ReadFileBuffer(string path)
+        {
+            lock (_excelFileReadLocker)
+            {
+                return File.ReadAllBytes(path);
+            }
+        }
 
         private static Dictionary<int, string> GetDynamicReadMapper(Dictionary<int, string> dynamicFieldMapper, int cellNumber)
         {
@@ -545,28 +554,48 @@ namespace CSharp.Framework.Helper
         {
             var fieldPropertyInfo = GetModelMap(rowData).FirstOrDefault(f => f.Name == fieldName);
 
-            if (fieldPropertyInfo == null) return null;
+            if (fieldPropertyInfo == null)
+            {
+                // 返回ExcelDynamicObject FieldValue
+                return GetDynamicObjectValue(rowData, fieldName);
+            }
 
             var fieldValue = fieldPropertyInfo.GetValue(rowData, null);
 
             if (fieldValue == null) return null;
 
-            if (fieldPropertyInfo.PropertyType.IsEnum)
-            {
-                return GetEnumValue(fieldValue);
-            }
-
-            var fieldType = fieldValue.GetType().ToString();
-            switch (fieldType)
-            {
-                case "System.DateTime":
-                    return Convert.ToDateTime(fieldValue).ToString(_dateTimeFormat);
-                default:
-                    return fieldValue.ToString();
-            }
-
-            // todo DynamicObjectExtension
+            return fieldPropertyInfo.PropertyType.IsEnum ? GetEnumValue(fieldValue) : GetFieldStringValue(fieldValue);
         }
+
+        private static string GetDynamicObjectValue<T>(T rowData, string key)
+        {
+            var fieldValue = string.Empty;
+            if (rowData is ExcelDynamicObject model)
+            {
+                fieldValue = GetFieldStringValue(model.GetValue(key));
+            }
+
+            return fieldValue;
+        }
+
+        private static string GetFieldStringValue(object fieldValue)
+        {
+            //处理枚举
+            if (fieldValue.GetType().IsEnum)
+            {
+                var enumValue = GetEnumValue(fieldValue);
+                if (!string.IsNullOrEmpty(enumValue)) return enumValue;
+            }
+
+            //其余为日期和字符串
+            var fieldType = fieldValue.GetType().ToString();
+            return fieldType switch
+            {
+                "System.DateTime" => Convert.ToDateTime(fieldValue).ToString(_dateTimeFormat),
+                _ => fieldValue?.ToString()
+            };
+        }
+
 
         /// <summary>
         /// 获取枚举值
@@ -634,7 +663,16 @@ namespace CSharp.Framework.Helper
                 fieldMapperList.Add(fieldName, fieldName);
             }
 
-            //todo 4、from DynamicObjectExtension 
+
+            if (fieldMapperList.Any()) return fieldMapperList;
+
+            //4、from DynamicObjectExtension 
+            if (model is ExcelDynamicObject dynamicObject)
+            {
+                fieldMapperList = dynamicObject.GetAllKeys()
+                    .ToDictionary(key => key, value => value);
+            }
+
             return fieldMapperList;
         }
 
@@ -683,11 +721,6 @@ namespace CSharp.Framework.Helper
             }
 
             return fieldMapperList;
-        }
-
-        public static object GetDynamicValue(IDictionary<string, object> dynamicDic, string key)
-        {
-            return dynamicDic.ContainsKey(key) ? dynamicDic[key] : null;
         }
 
         #endregion

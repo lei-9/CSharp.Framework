@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Dynamic;
+using System.Linq;
 
 namespace CSharp.Framework.Extensions
 {
@@ -10,6 +11,15 @@ namespace CSharp.Framework.Extensions
     {
         private Dictionary<string, object> Map = new Dictionary<string, object>();
 
+        public IEnumerable<string> GetAllKeys()
+        {
+            return Map.Keys;
+        }
+        public object GetValue(string key)
+        {
+            return Map.ContainsKey(key) ? Map[key] : default;
+        }
+        
         public void AddProperty(string key, object value)
         {
             Map.Add(key, value);

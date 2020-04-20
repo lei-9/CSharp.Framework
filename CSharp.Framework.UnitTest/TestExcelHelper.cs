@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Dynamic;
 using System.IO;
+using CSharp.Framework.Extensions;
 using CSharp.Framework.Helper;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -39,16 +40,21 @@ namespace CSharp.Framework.UnitTest
             var list = new List<dynamic>();
             for (int i = 0; i < 10000; i++)
             {
-                list.Add(new
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    CreateByAt = DateTime.Now.AddDays(i),
-                    ExportEnum = (TestExcelExportEnum) random.Next(0, 3)
-                });
+                var item = new ExcelDynamicObject();
+                item.AddProperty("Id", Guid.NewGuid().ToString());
+                item.AddProperty("CreateByAt", DateTime.Now.AddDays(i));
+                item.AddProperty("ExportEnum", (TestExcelExportEnum) random.Next(0, 3));
+                list.Add(item);
             }
 
+            var result = ExcelHelper.Export(list, "template/2.xlsx"); //, "template/2.xlsx"
+            //, "template/2.xlsx"
 
-            ExcelHelper.Export(list, "template/2.xlsx");
+            Console.Write(result.Length);
+
+            Console.WriteLine(list[0].Id);
+            Console.WriteLine(list[0].CreateByAt);
+            Console.WriteLine(list[0].ExportEnum);
         }
 
         [Fact]
