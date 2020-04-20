@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using CSharp.Framework.Extensions;
+using CSharp.Framework.Helper;
 using Xunit;
 
 namespace CSharp.Framework.UnitTest
@@ -45,7 +47,24 @@ namespace CSharp.Framework.UnitTest
                 var valText = val.ToString();
             }
         }
+
+        
+
+        [Fact]
+        public void TestDynamicObjectExtension()
+        {
+
+            dynamic d = new DynamicObjectExtension();
+            d.AddProperty("item1", "item1");
+            d.AddProperty("item2", "item2");
+            
+            Console.WriteLine(d.item1);
+            Console.WriteLine(d.item2);
+        }
     }
+    
+    
+    
 
     public class User
     {

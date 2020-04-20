@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using CSharp.Framework.Extensions;
 using Newtonsoft.Json;
 using NPOI.HSSF.UserModel;
 using NPOI.SS.UserModel;
@@ -22,7 +23,8 @@ namespace CSharp.Framework.Helper
         private static readonly Dictionary<string, string> ModelEnumMap = new Dictionary<string, string>();
         private static readonly Dictionary<string, string> FieldDescMap = new Dictionary<string, string>();
         private static readonly Dictionary<string, string> FieldDescRelationMapper = new Dictionary<string, string>();
-
+        private static Dictionary<string, PropertyInfo> FieldPropertyInfoMap = new Dictionary<string, PropertyInfo>();
+        
         private static string _dateTimeFormat = "yyyy-MM-dd hh:mm:ss";
 
         public static void SetDateTimeFormat(string dateTimeFormat)
@@ -67,41 +69,22 @@ namespace CSharp.Framework.Helper
             for (var i = startIndex; i < sheet.PhysicalNumberOfRows; i++)
             {
                 var readRow = sheet.GetRow(i);
-                if (readRow != null)
+                
+                if (readRow == null) continue;
+                
+                var model = new DynamicObjectExtension();
+                for (var j = 0; j < readRow.PhysicalNumberOfCells; j++)
                 {
-                    var model = new ExpandoObject();
-                    for (int j = 0; j < readRow.PhysicalNumberOfCells; j++)
-                    {
-                        //字典存在映射关系才进行赋值
-                        if (dynamicFieldMapper.ContainsKey(j))
-                        {
-                            string cellValue = null;
-                            var cell = readRow.GetCell(j);
-                            if (cell != null)
-                            {
-                                if (cell.CellType == CellType.Numeric)
-                                {
-                                    short format = cell.CellStyle.DataFormat;
-                                    cellValue = format > 0 ? cell.DateCellValue.ToString(_dateTimeFormat) : cell.NumericCellValue.ToString(CultureInfo.InvariantCulture);
-                                }
-                                else
-                                {
-                                    cell.SetCellType(CellType.String);
-                                    cellValue = cell.StringCellValue;
-                                }
-                            }
+                    //字典存在映射关系才进行赋值
+                    if (!dynamicFieldMapper.ContainsKey(j)) continue;
+                    var cellValue = GetCellValue(readRow.GetCell(j));
 
-                            //SetFieldValue(model, dynamicFieldMapper[j], cellValue);
-                            ((IDictionary<string, object>) model).Add(dynamicFieldMapper[j], cellValue);
-                        }
-                    }
-
-                    result.Add(model);
+                    model.AddProperty(dynamicFieldMapper[j], cellValue);
                 }
+
+                result.Add(model);
             }
 
-
-            result = JsonConvert.DeserializeObject<List<object>>(JsonConvert.SerializeObject(result));
             return result;
         }
 
@@ -151,40 +134,24 @@ namespace CSharp.Framework.Helper
                 var readRow = sheet.GetRow(i);
                 if (readRow != null)
                 {
-                    var model = new ExpandoObject();
-                    for (int j = 0; j < readRow.PhysicalNumberOfCells; j++)
+                    var model = new DynamicObjectExtension();
+                    for (var j = 0; j < readRow.PhysicalNumberOfCells; j++)
                     {
                         //字典存在映射关系才进行赋值
                         if (!headerMap.ContainsKey(j)) continue;
 
                         var curHeaderName = headerMap[j];
                         if (string.IsNullOrEmpty(curHeaderName) || !dynamicFieldMapper.ContainsKey(curHeaderName)) continue;
-                        var cell = readRow.GetCell(j);
-                        string cellValue = null;
-                        if (cell != null)
-                        {
-                            if (cell.CellType == CellType.Numeric)
-                            {
-                                short format = cell.CellStyle.DataFormat;
-                                cellValue = format > 0 ? cell.DateCellValue.ToString(_dateTimeFormat) : cell.NumericCellValue.ToString(CultureInfo.InvariantCulture);
-                            }
-                            else
-                            {
-                                cell.SetCellType(CellType.String);
-                                cellValue = cell.StringCellValue;
-                            }
-                        }
 
-                        //SetFieldValue(model, dynamicFieldMapper[curHeaderName], cellValue);
-                        ((IDictionary<string, object>) model).Add(dynamicFieldMapper[curHeaderName], cellValue);
+                        var cellValue = GetCellValue(readRow.GetCell(j));
+
+                        model.AddProperty(dynamicFieldMapper[curHeaderName], cellValue);
                     }
 
                     result.Add(model);
                 }
             }
-            
-            result = JsonConvert.DeserializeObject<List<object>>(JsonConvert.SerializeObject(result));
-            
+
             return result;
         }
 
@@ -229,29 +196,14 @@ namespace CSharp.Framework.Helper
                 if (readRow != null)
                 {
                     var model = new T();
-                    for (int j = 0; j < readRow.PhysicalNumberOfCells; j++)
+                    for (var j = 0; j < readRow.PhysicalNumberOfCells; j++)
                     {
                         //字典存在映射关系才进行赋值
-                        if (fieldMapperList.ContainsKey(j))
-                        {
-                            string cellValue = null;
-                            var cell = readRow.GetCell(j);
-                            if (cell != null)
-                            {
-                                if (cell.CellType == CellType.Numeric)
-                                {
-                                    short format = cell.CellStyle.DataFormat;
-                                    cellValue = format > 0 ? cell.DateCellValue.ToString(_dateTimeFormat) : cell.NumericCellValue.ToString(CultureInfo.InvariantCulture);
-                                }
-                                else
-                                {
-                                    cell.SetCellType(CellType.String);
-                                    cellValue = cell.StringCellValue;
-                                }
-                            }
+                        if (!fieldMapperList.ContainsKey(j)) continue;
 
-                            SetFieldValue(model, fieldMapperList[j], cellValue);
-                        }
+                        var cellValue = GetCellValue(readRow.GetCell(j));
+
+                        SetFieldValue(model, fieldMapperList[j], cellValue);
                     }
 
                     result.Add(model);
@@ -260,6 +212,31 @@ namespace CSharp.Framework.Helper
 
             return result;
         }
+
+        /// <summary>
+        /// 获取单元格的值
+        /// </summary>
+        /// <param name="cell"></param>
+        /// <returns></returns>
+        private static string GetCellValue(ICell cell)
+        {
+            var cellValue = string.Empty;
+            if (cell == null) return cellValue;
+
+            if (cell.CellType == CellType.Numeric)
+            {
+                var format = cell.CellStyle.DataFormat;
+                cellValue = format > 0 ? cell.DateCellValue.ToString(_dateTimeFormat) : cell.NumericCellValue.ToString(CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                cell.SetCellType(CellType.String);
+                cellValue = cell.StringCellValue;
+            }
+
+            return cellValue;
+        }
+
 
         /// <summary>
         /// 创建Excel WorkBook
@@ -422,7 +399,7 @@ namespace CSharp.Framework.Helper
             workbook.Write(writefs);
 
             writefs.Flush();
-            
+
             return null;
         }
 
@@ -524,7 +501,7 @@ namespace CSharp.Framework.Helper
             return propertyInfos;
         }
 
-        private static Dictionary<string, PropertyInfo> FieldPropertyInfoMap = new Dictionary<string, PropertyInfo>();
+        
 
         private static PropertyInfo GetFieldPropertyInfo<T>(T model, string fieldName)
         {
